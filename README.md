@@ -1,6 +1,6 @@
-# simple-r-project
+# Tulip project PMHD
 
-This simple project structure template repository is adapted from the [Good Enough Project](https://github.com/bvreede/good-enough-project) Cookiecutter template by Barbara Vreede (2019).
+This is an exercise for the course "Best Practice in writing reproducible code".
 
 ## Usage
 
