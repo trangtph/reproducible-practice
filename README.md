@@ -1,10 +1,11 @@
 # Tulip project PMHD
 
-This is an exercise for the course "Best Practice in writing reproducible code".
+This is an exercise for the course "Best Practice in writing reproducible code". This project aims to analyse data from an agriculture experiment to determine what chemical compounds can preserve the freshness of cut roses for the longest time. For more details on the experiment and analysis plan, please refer to the `PMHD study protocol` file under the `docs` folder.
 
-## Usage
-
-Click "Use this template" at the top of this page to create a new repository with the same folder structure.
+## Configuration
+- The code for the analysis is written in `R` version 4.3.2.
+- The results were generated using `R Studio` version 2023.09.01.
+- The installation and loading of packages needed for the analysis are included in the R script.
 
 ## Project Structure
 
@@ -35,8 +36,9 @@ The project structure distinguishes three kinds of folders:
 
 ```
 
-## Add a citation file
-Create a citation file for your repository using [cffinit](https://citation-file-format.github.io/cff-initializer-javascript/#/)
+## Usage
+To run the analysis, first open the `Tulip project.Rproj` in the main folder, using `R Studio`. Secondly, open the file `Analysis_Tulip_Final.Rmd` in the sub-folder `R`. Then run the code chunks in the order that they appears in the Rmd file. To render the report, click `knit` on your R Studio toolbar. 
+
 
 ## License
 
