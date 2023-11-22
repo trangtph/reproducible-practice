@@ -103,7 +103,6 @@ binary_data <- transform_binary(data_no_miss)
 ```
 
 
-
 # 1. Data exploration
 
 ## Count data
@@ -305,23 +304,6 @@ output_gee2
 ```
 
 
-Old code:
-```
-options(scipen = 999)
-effect_gee <- round(exp(sum_gee$coefficients[, 1]), digits = 3)
-conf.low_gee <- round(exp(sum_gee$coefficients[, 1] + qnorm(0.025) * sum_gee$coefficients[, 2]), digits = 3)
-conf.high_gee <- round(exp(sum_gee$coefficients[, 1] + qnorm(0.975) * sum_gee$coefficients[, 2]), digits = 3)
-right_p_value_gee <- round(if_else(sum_gee$coefficients[, 1] > 0, sum_gee$coefficients[, 4] / 2, 1 - (sum_gee$coefficients[, 4] / 2)), digits = 5) # right-sided p-value
-output_gee <- data.frame(cbind(effect_gee, conf.low_gee, conf.high_gee, right_p_value_gee))
-output_gee <- output_gee %>%
-  mutate(term = rownames(sum_gee$coefficients)) %>%
-  relocate(term)
-output_gee$term <- as.factor(output_gee$term)
-output_gee
-output_gee2 <- output_gee %>% slice(-c(1, 16, 17))
-output_gee2 <- output_gee2 %>% mutate(adjust_right_p_value_gee = p.adjust(output_gee2$right_p_value_gee, method = "holm"))
-output_gee2
-```
 
 Forest plot: 
 ```{r}

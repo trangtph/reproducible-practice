@@ -1,10 +1,10 @@
 transform_binary <- function(data_no_miss){
   #' @title Transform a Poisson variable (count) in to a Binary variable (yes/no)
-  #' @description This function takes two 
-  #' input numbers and multiplies
-  #' them. It returns the multiplied result.
+  #' @description This function create two new variable: 
+  #' "day": chains of day from day 1 to the maximum day observed in the data
+  #' "fressness": whether the flower is fresh on that day
   #' @param data_no_miss The first value
-  #' @return The two arguments multiplied.
+  #' @return The new dataframe.
   number_binary_variable <- max(data_no_miss$tot.vase.days)
   binary_data <- as.data.frame(matrix(NA, nrow = nrow(data_no_miss) * number_binary_variable, 
                                       ncol = ncol(data_no_miss)))
