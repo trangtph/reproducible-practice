@@ -37,6 +37,11 @@ The project structure distinguishes three kinds of folders:
 ```
 
 ## Usage
+To download the project, clone this project to your local device by going to your terminal and type the following command:
+```
+git clone git@github.com:trangtph/reproducible-practice.git
+```
+
 To run the analysis, first open the `Tulip project.Rproj` in the main folder, using `R Studio`. Secondly, open the file `Analysis_Tulip_Final.Rmd` in the sub-folder `R`. Then run the code chunks in the order that they appears in the Rmd file. To render the report, click `knit` on your R Studio toolbar. 
 
 
