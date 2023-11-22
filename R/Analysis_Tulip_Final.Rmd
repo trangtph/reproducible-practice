@@ -1,7 +1,7 @@
 ---
 title: "Analysis_Tulip_Final"
 author: "Trang Tu"
-date: "2023-05-27"
+date: "2023-11-22"
 output: html_document
 ---
 
@@ -10,6 +10,22 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r include=FALSE, message = FALSE}
+library(pacman)
+pacman::p_load(tidyverse,
+               ggplot2,
+               rio, #import, export
+               plotly,
+               here, #file path
+               MetBrewer, #nice colors
+               stringr, #working with strings
+               patchwork, #for forest plot
+               docstring
+               ) 
+```
+
+
+```{r include=FALSE, message = FALSE}
+
 library(plotly)
 library(tidyverse)
 library(ggplot2)
@@ -44,13 +60,18 @@ library(tidyquant)
 
 ## Poisson data
 
+Import data:
 ```{r}
-data_count <- read.csv("count_data_G8.csv")
+data_count <- import(here("data", "raw", "count_data_G8.csv"))
+```
 
-data_count$subplotID <- as.factor(data_count$subplotID)
-data_count$species <- as.factor(data_count$species)
-data_count$garden <- as.factor(data_count$garden)
-data_count$rater <- as.factor(data_count$rater)
+Define variable class:
+```{r}
+data_count <- data_count %>% mutate(across(c("subplotID", "species","garden","rater"), as.factor))
+```
+
+Label the compounds variable with their original names
+```{r}
 data_count <- data_count %>% mutate(compound = paste("C", data_count$compound, sep = ""))
 data_count$compound <- factor(data_count$compound,
   levels = c("C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "C14", "C15"),
@@ -75,30 +96,11 @@ data_no_miss <- data_count %>% drop_na(tot.vase.days)
 ## Binary data
 
 Transform the poisson outcome 'tot.vase.days' into a longitudinal binary outcome (i.e. fresh=1/not fresh=0):
-
+Type `?transform_binary` for more information on the transformation function.
 ```{r}
-binary_data <- as.data.frame(matrix(NA, nrow = nrow(data_no_miss) * 25, ncol = ncol(data_no_miss)))
-names(binary_data) <- names(data_no_miss)
-for (i in 1:ncol(data_no_miss))
-{
-  binary_data[, i] <- rep(data_no_miss[, i], each = 25)
-}
-binary_data <- binary_data %>% mutate(day = rep(1:25, times = nrow(data_no_miss)), freshness = if_else(day <= tot.vase.days, 1, 0))
-binary_data$flowerID <- as.factor(binary_data$flowerID)
+source("transform_binary.R")
+binary_data <- transform_binary(data_no_miss)
 ```
-
-
-```{r}
-binary_data2 <- as.data.frame(matrix(NA, nrow = nrow(data_no_miss) * 25, ncol = ncol(data_no_miss)))
-names(binary_data2) <- names(data_no_miss)
-for (i in 1:ncol(data_no_miss))
-{
-  binary_data2[, i] <- rep(data_no_miss[, i], each = 25)
-}
-binary_data2 <- binary_data2 %>% mutate(day = rep(0:24, times = nrow(data_no_miss)), freshness = if_else(day <= tot.vase.days - 1, 1, 0))
-binary_data2$flowerID <- as.factor(binary_data2$flowerID)
-```
-
 
 
 
@@ -138,7 +140,7 @@ violin_plot <- data_no_miss %>%
 
 violin_plot
 
-ggsave("violin_plot2.png",
+ggsave(here("results","violin_plot2.png"),
   violin_plot,
   device = ragg::agg_png, res = 400, units = "in", h = 6, w = 8
 )
@@ -150,7 +152,7 @@ The violin plot visualize the marginal distribution of rose longevity per compou
 
 ## Binary data
 
-proportion of fresh flower over time by compound
+Proportion of fresh flower over time by compound
 
 ```{r}
 flower_per_compound <- data_no_miss %>%
@@ -172,6 +174,7 @@ fresh_over_time_excluding_water_c2_c6 <- fresh_over_time %>%
   filter(!compound %in% c("Water", "Apathic Acid", "Essence of Epiphaneia"))
 ```
 
+Plot of proportion of fresh flower over time by compound
 ```{r}
 fresh_over_time_water_c2_c6 <- fresh_over_time_water_c2_c6 %>%
   mutate(label = ifelse(day == 15, str_wrap(as.character(compound), width = 10), NA))
@@ -206,7 +209,7 @@ plot_fresh_flower_highlight <- ggplot(
   ) +
   theme(legend.position = "none")
 
-ggsave("plot_fresh_flower_highlight.png",
+ggsave(here("results", "plot_fresh_flower_highlight.png"),
   plot_fresh_flower_highlight,
   device = ragg::agg_png, res = 400, units = "in", h = 8, w = 12
 )
@@ -252,8 +255,58 @@ The column labeled Wald in the summary table is the square of the z-statistic re
 Model with exchangeable correlation structure yielded smaller QIC than unstructured. 
 => Choose "Exchangeable" correlation structure. 
 
-Output visualization
+Output visualization:
+
 ```{r}
+#odds ratio
+odds_ratio <- function(coefficient){
+  effect <- round(exp(coefficient), digits = 3)
+  return(effect)
+}
+
+#confidence interval 
+confi_interval <- function(coefficient, std_err){
+  confi_low <- round(exp(coefficient + qnorm(0.025)* std_err), digits = 3)
+  confi_high <- round(exp(coefficient + qnorm(0.975)* std_err), digits = 3)
+  return(data.frame(cbind(confi_low, confi_high)))
+}
+#right-sided p-value
+rightside_p_value <- function(coefficient, model_p_value){
+ right_p <- round(if_else(coefficient > 0, model_p_value / 2, 
+                          1 - model_p_value / 2), 
+                  digits = 5)
+}
+
+#model out put
+model_output_visual <- function(model){
+  coefficient <- model$coefficients[, 1]
+  std_err <- model$coefficients[, 2]
+  model_p_value <- model$coefficients[, 4]
+  effect <- odds_ratio(coefficient)
+  confi_table <- confi_interval(coefficient, std_err)
+  right_p_value <- rightside_p_value(coefficient, model_p_value)
+  output_table <- data.frame(cbind(effect, confi_table, right_p_value))
+  output_table <- output_table %>%
+  mutate(term = rownames(model$coefficients)) %>%
+  relocate(term)
+  return(output_table)
+}
+```
+
+Calculate Holm-Bonferonni adjusted p-value
+```{r}
+output_gee <- model_output_visual(sum_gee)
+output_gee
+output_gee$term <- as.factor(output_gee$term)
+output_gee2 <- output_gee %>% slice(-c(1, 16, 17))
+output_gee2 <- output_gee2 %>% mutate(adjust_right_p_value = 
+                                        p.adjust(output_gee2$right_p_value, method = "holm"))
+output_gee2
+```
+
+
+Old code:
+```
 options(scipen = 999)
 effect_gee <- round(exp(sum_gee$coefficients[, 1]), digits = 3)
 conf.low_gee <- round(exp(sum_gee$coefficients[, 1] + qnorm(0.025) * sum_gee$coefficients[, 2]), digits = 3)
@@ -275,7 +328,7 @@ Forest plot:
 output_gee2 <- output_gee2 |>
   mutate(
     term_compound = str_sub(term, 9),
-    term_compound = term_compound %>% fct_reorder(-effect_gee)
+    term_compound = term_compound %>% fct_reorder(-effect)
   )
 
 ## plotting
@@ -284,8 +337,8 @@ p_mid <-
   output_gee2 |>
   ggplot(aes(y = fct_rev(term_compound))) +
   theme_classic() +
-  geom_point(aes(x = effect_gee), shape = 15, size = 3) +
-  geom_linerange(aes(xmin = conf.low_gee, xmax = conf.high_gee)) +
+  geom_point(aes(x = effect), shape = 15, size = 3) +
+  geom_linerange(aes(xmin = confi_low, xmax = confi_high)) +
   labs(x = "") +
   coord_cartesian(ylim = c(1, 15), xlim = c(.6, 1.5)) +
   geom_vline(xintercept = 1, linetype = "dashed") +
@@ -301,22 +354,21 @@ p_mid <-
 # wrangle results into pre-plotting table form
 res_plot <- output_gee2 |>
   mutate(
-    # across(c(effect_gee, conf.low_gee, conf.high_gee), ~str_pad(round(.x, 2), width=4, pad="0", side="right")),
-    across(c(effect_gee, conf.low_gee, conf.high_gee), ~ round(.x, 3)),
-    estimate_lab = paste0(effect_gee, " (", conf.low_gee, "-", conf.high_gee, ")"),
+    across(c(effect, confi_low, confi_high), ~ round(.x, 3)),
+    estimate_lab = paste0(effect, " (", confi_low, "-", confi_high, ")"),
     color = rep(c("gray", "white"), 7)
   ) |>
   mutate(
-    adjust_right_p_value_gee = case_when(
-      adjust_right_p_value_gee < .001 ~ "<0.001",
-      TRUE ~ str_pad(as.character(round(adjust_right_p_value_gee, 3)), width = 1, pad = "0", side = "right")
+    adjust_right_p_value = case_when(
+      adjust_right_p_value < .001 ~ "<0.001",
+      TRUE ~ str_pad(as.character(round(adjust_right_p_value, 3)), width = 1, pad = "0", side = "right")
     ),
-    conf.low_gee = conf.low_gee %>% as.character(),
-    conf.high_gee = conf.high_gee %>% as.character()
+    confi_low = confi_low %>% as.character(),
+    confi_high = confi_high %>% as.character()
   ) |>
   bind_rows(data.frame(
-    term = "Compound", estimate_lab = "Effect Estimate (95% CI)", conf.low_gee = "", conf.high_gee = "",
-    adjust_right_p_value_gee = "Holm-Bonferroni adjusted \nRigh-sided p-value"
+    term = "Compound", estimate_lab = "Effect Estimate (95% CI)", confi_low = "", confi_high = "",
+    adjust_right_p_value = "Holm-Bonferroni adjusted \nRigh-sided p-value"
   )) |>
   mutate(term_compound = fct_rev(fct_relevel(term_compound, "Compound")))
 
@@ -333,23 +385,15 @@ p_left <-
 p_right <-
   res_plot |>
   ggplot() +
-  geom_text(aes(x = 0, y = term_compound, label = adjust_right_p_value_gee),
-    hjust = 0, fontface = ifelse(res_plot$adjust_right_p_value_gee == "p-value", "bold", "plain")
+  geom_text(aes(x = 0, y = term_compound, label = adjust_right_p_value),
+    hjust = 0, fontface = ifelse(res_plot$adjust_right_p_value == "p-value", "bold", "plain")
   ) +
   theme_void()
 
-# layout design (top, left, bottom, right)
-# layout <- c(
-# area(t = 0, l = 0, b = 30, r = 3),
-# area(t = 1, l = 4, b = 30, r = 9),
-# area(t = 0, l = 9, b = 30, r = 11)
-# )
-
 # Final plot arrangement
-# p_left + p_mid + p_right + plot_layout(design = layout)
 forest_plot_poisson_gee <- p_left + p_mid + p_right + plot_layout(widths = c(2, 1.6, 1.6))
 forest_plot_poisson_gee
-ggsave("forest_plot_poisson_gee.png",
+ggsave(here("results", "forest_plot_poisson_gee.png"),
   forest_plot_poisson_gee,
   device = ragg::agg_png, res = 400, units = "in", h = 6, w = 11.5
 )
@@ -371,116 +415,24 @@ Because we are working with binary data we need to include one further argument:
 
 Significance is determined by right-side p-value. Because this is secondary analysis, we do not adjust for multiple comparision. 
 ```{r}
-m_logistic_gee <- geeglm(freshness ~ day + day:compound + garden + species + rater, id = flowerID, family = binomial, data = binary_data2, corstr = "exchangeable", scale.fix = T)
+m_logistic_gee <- geeglm(freshness ~ day + day:compound + garden + species + rater, id = flowerID, family = binomial, data = binary_data, corstr = "exchangeable", scale.fix = T)
 sum_logistic_gee <- summary(m_logistic_gee)
 sum_logistic_gee
 ```
 
-Choose correlation structures:
-```{r, eval=FALSE}
-m_logistic_gee2 <- geeglm(freshness ~ day + day:compound + garden + species + rater, id = flowerID, family = binomial, data = binary_data2, corstr = "unstructured", scale.fix = T)
-QIC(m_logistic_gee, m_logistic_gee2)
-```
-=> Choose "exchangeable" structure. 
+ 
 
 Model output: 
+
 ```{r}
-options(scipen = 999)
-effect_gee_l <- round(exp(sum_logistic_gee$coefficients[, 1]), digits = 3)
-conf.low_gee_l <- round(exp(sum_logistic_gee$coefficients[, 1] + qnorm(0.025) * sum_logistic_gee$coefficients[, 2]), digits = 3)
-conf.high_gee_l <- round(exp(sum_logistic_gee$coefficients[, 1] + qnorm(0.975) * sum_logistic_gee$coefficients[, 2]), digits = 3)
-p_value_gee <- round(sum_logistic_gee$coefficients[, 4], digits = 5) # right-sided p-value
-output_gee_l <- data.frame(cbind(effect_gee_l, conf.low_gee_l, conf.high_gee_l, p_value_gee))
+output_gee_l <- model_output_visual(sum_logistic_gee)
+
 output_gee_l <- output_gee_l %>%
   mutate(term = rownames(sum_logistic_gee$coefficients)) %>%
   relocate(term)
 output_gee_l$term <- as.factor(output_gee_l$term)
 output_gee_l2 <- output_gee_l %>% slice(-c(1:13))
 output_gee_l2
+
 ```
-
-
-Visualize output:
-Forest plot: 
-```{r}
-output_gee_l2 <- output_gee_l2 |>
-  mutate(
-    term_compound = str_sub(term, 13),
-    term_compound = term_compound %>% fct_reorder(-effect_gee_l)
-  )
-
-## plotting
-
-p_mid <-
-  output_gee_l2 |>
-  ggplot(aes(y = fct_rev(term_compound))) +
-  theme_classic() +
-  geom_point(aes(x = effect_gee_l), shape = 15, size = 3) +
-  geom_linerange(aes(xmin = conf.low_gee_l, xmax = conf.high_gee_l)) +
-  labs(x = "") +
-  coord_cartesian(ylim = c(1, 15), xlim = c(.6, 1.5)) +
-  geom_vline(xintercept = 1, linetype = "dashed") +
-  annotate("text", x = .75, y = 15, label = "Worse than water", fontface = "bold") +
-  annotate("text", x = 1.3, y = 15, label = "Better than water", fontface = "bold") +
-  theme(
-    axis.line.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    axis.text.y = element_blank(),
-    axis.title.y = element_blank()
-  )
-
-# wrangle results into pre-plotting table form
-res_plot <- output_gee_l2 |>
-  mutate(
-    # across(c(effect_gee_l, conf.low_gee_l, conf.high_gee_l), ~str_pad(round(.x, 2), width=4, pad="0", side="right")),
-    across(c(effect_gee_l, conf.low_gee_l, conf.high_gee_l), ~ round(.x, 3)),
-    estimate_lab = paste0(effect_gee_l, " (", conf.low_gee_l, "-", conf.high_gee_l, ")"),
-    color = rep(c("gray", "white"), 7)
-  ) |>
-  mutate(
-    p_value_gee = case_when(
-      p_value_gee < .001 ~ "<0.001",
-      TRUE ~ str_pad(as.character(round(p_value_gee, 3)), width = 1, pad = "0", side = "right")
-    ),
-    conf.low_gee_l = conf.low_gee_l %>% as.character(),
-    conf.high_gee_l = conf.high_gee_l %>% as.character()
-  ) |>
-  bind_rows(data.frame(
-    term = "Compound", estimate_lab = "Odds Ratio (95% CI)", conf.low_gee_l = "", conf.high_gee_l = "",
-    p_value_gee_l = "p-value",
-    p_value_gee = "Righ-sided p-value"
-  )) |>
-  mutate(term_compound = fct_rev(fct_relevel(term_compound, "Compound")))
-
-# left side of plot - Odds ratios
-p_left <-
-  res_plot |>
-  ggplot(aes(y = term_compound)) +
-  geom_text(aes(x = 0, label = term_compound), hjust = 0, fontface = "bold") +
-  geom_text(aes(x = 2.2, label = estimate_lab), hjust = 0, fontface = ifelse(res_plot$estimate_lab == "95% CI", "bold", "plain")) +
-  theme_void() +
-  coord_cartesian(xlim = c(0, 4))
-
-# right side of plot - pvalues
-p_right <-
-  res_plot |>
-  ggplot() +
-  geom_text(aes(x = 0, y = term_compound, label = p_value_gee), hjust = 0, fontface = ifelse(res_plot$p_value_gee == "p-value", "bold", "plain")) +
-  theme_void()
-
-
-# Final plot arrangement
-# p_left + p_mid + p_right + plot_layout(design = layout)
-forest_plot_logistic_gee <- p_left + p_mid + p_right + plot_layout(widths = c(1.8, 2, 1.3))
-forest_plot_logistic_gee
-ggsave("forest_plot_logistic_gee.png",
-  forest_plot_logistic_gee,
-  device = ragg::agg_png, res = 400, units = "in", h = 6, w = 11.5
-)
-```
-
-
-**Interpretation:** The results of the logistic model with GEE approach agrees with the poisson model. Compound 2 performed best, in which the odds of being fresh of flowers for each day increase is 1.11 times higher than that of those in distilled water (95% CI: 1.07-1.15). The second and third best compounds are compound 6 and 13. 
-
-
 
