@@ -10,6 +10,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r include=FALSE, message = FALSE}
+if (!require("pacman", quietly = TRUE)) {
+  install.packages("pacman")
+}
 library(pacman)
 pacman::p_load(tidyverse,
                ggplot2,
